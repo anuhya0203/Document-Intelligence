@@ -11,16 +11,16 @@ pydantic-settings==2.10.1
 # Database
 sqlalchemy==2.0.43
 
+# LLM
+google-genai==1.36.0
+
 # OCR & PDF Processing
+PyPDF2==3.0.1
 easyocr==1.7.2
 PyMuPDF==1.26.4
-pdf2image==1.17.0
 pillow==11.3.0
 numpy==2.2.6
 opencv-python-headless==4.12.0.88
-
-# LLM
-anthropic==0.64.0
 
 # Templates & HTTP
 jinja2==3.1.6
