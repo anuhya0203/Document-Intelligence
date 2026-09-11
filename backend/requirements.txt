@@ -1,0 +1,31 @@
+# FastAPI
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+
+# Configuration
+python-dotenv==1.1.1
+pydantic==2.11.7
+pydantic-settings==2.10.1
+
+# Database
+sqlalchemy==2.0.43
+
+# OCR & PDF Processing
+easyocr==1.7.2
+PyMuPDF==1.26.4
+pdf2image==1.17.0
+pillow==11.3.0
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+
+# LLM
+anthropic==0.64.0
+
+# Templates & HTTP
+jinja2==3.1.6
+requests==2.32.5
+httpx==0.28.1
+
+# Testing
+pytest==8.4.1
