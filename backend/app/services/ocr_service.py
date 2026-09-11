@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 class OCRService:
     """OCR service for PDFs and images."""
 
-    # Load EasyOCR model once
-    reader = easyocr.Reader(["en"], gpu=False)
+    _reader = None  # Lazy-loaded EasyOCR reader
+
+    @classmethod
+    def _get_reader(cls):
+        """Initialize EasyOCR only when it's actually needed."""
+        if cls._reader is None:
+            logger.info("Initializing EasyOCR model...")
+            cls._reader = easyocr.Reader(["en"], gpu=False)
+        return cls._reader
 
     @staticmethod
     def extract_text(file_path: str, file_ext: str) -> Optional[str]:
@@ -36,12 +43,11 @@ class OCRService:
     @staticmethod
     def _extract_text_from_pdf(pdf_path: str) -> Optional[str]:
         """Extract text from native PDFs or scanned PDFs."""
-
         try:
             doc = fitz.open(pdf_path)
             text = ""
 
-            # Native PDF extraction
+            # Try native PDF text extraction first.
             for page in doc:
                 text += page.get_text()
 
@@ -52,6 +58,7 @@ class OCRService:
 
             logger.info("Scanned PDF detected. Running EasyOCR.")
 
+            reader = OCRService._get_reader()
             ocr_text = []
 
             for page in doc:
@@ -63,11 +70,7 @@ class OCRService:
                     pix.samples,
                 )
 
-                results = OCRService.reader.readtext(
-                    np.array(image),
-                    detail=0
-                )
-
+                results = reader.readtext(np.array(image), detail=0)
                 ocr_text.extend(results)
 
             doc.close()
@@ -80,14 +83,11 @@ class OCRService:
     @staticmethod
     def _extract_text_from_image(image_path: str) -> Optional[str]:
         """Extract text from JPG/PNG using EasyOCR."""
-
         try:
             image = Image.open(image_path).convert("RGB")
 
-            results = OCRService.reader.readtext(
-                np.array(image),
-                detail=0
-            )
+            reader = OCRService._get_reader()
+            results = reader.readtext(np.array(image), detail=0)
 
             if not results:
                 return None
