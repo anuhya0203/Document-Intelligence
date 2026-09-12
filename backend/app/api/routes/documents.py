@@ -72,13 +72,15 @@ async def process_document(
             return result
         
         # Step 2: OCR / Text Extraction
-        extracted_text = OCRService.extract_text(tmp_path, file_ext)
-        if not extracted_text:
-            logger.warning(f"OCR extraction failed: {file.filename}")
-            raise HTTPException(
-                status_code=422,
-                detail="Could not extract text from document"
-            )
+        #extracted_text = OCRService.extract_text(tmp_path, file_ext)
+        #if not extracted_text:
+         #   logger.warning(f"OCR extraction failed: {file.filename}")
+          #  raise HTTPException(
+          #      status_code=422,
+          #      detail="Could not extract text from document"
+          #  )
+        logger.info("Skipping OCR for debug")
+        extracted_text = "TEST INVOICE NUMBER 123 TOTAL 100"  
         
         # Step 3: AI Extraction using Claude
         extracted_data = extraction_service.extract_fields(
