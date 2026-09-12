@@ -1,26 +1,16 @@
 import logging
 from typing import Optional
-
 import fitz  # PyMuPDF
-import easyocr
+import pytesseract
 import numpy as np
 from PIL import Image
+import io
 
 logger = logging.getLogger(__name__)
 
 
 class OCRService:
-    """OCR service for PDFs and images."""
-
-    _reader = None  # Lazy-loaded EasyOCR reader
-
-    @classmethod
-    def _get_reader(cls):
-        """Initialize EasyOCR only when it's actually needed."""
-        if cls._reader is None:
-            logger.info("Initializing EasyOCR model...")
-            cls._reader = easyocr.Reader(["en"], gpu=False)
-        return cls._reader
+    """OCR service optimized for Railway deployment - lightweight, handles 5-10MB PDFs."""
 
     @staticmethod
     def extract_text(file_path: str, file_ext: str) -> Optional[str]:
@@ -42,57 +32,85 @@ class OCRService:
 
     @staticmethod
     def _extract_text_from_pdf(pdf_path: str) -> Optional[str]:
-        """Extract text from native PDFs or scanned PDFs."""
+        """Extract text from native or scanned PDFs (handles 5-10MB files)."""
         try:
             doc = fitz.open(pdf_path)
-            text = ""
+            text_parts = []
 
-            # Try native PDF text extraction first.
-            for page in doc:
-                text += page.get_text()
+            # First pass: Try native text extraction
+            native_text_count = 0
+            for page_num, page in enumerate(doc):
+                try:
+                    page_text = page.get_text()
+                    if page_text.strip():
+                        text_parts.append(page_text)
+                        native_text_count += 1
+                except Exception as e:
+                    logger.warning(f"Native extraction failed on page {page_num}: {e}")
 
-            if text.strip():
+            # If we got native text from most pages, return it
+            if native_text_count >= len(doc) * 0.5:  # 50% threshold
                 doc.close()
-                logger.info("Native PDF text extracted.")
-                return text.strip()
+                logger.info(f"Native PDF text extracted from {native_text_count}/{len(doc)} pages")
+                return "\n".join(text_parts).strip()
 
-            logger.info("Scanned PDF detected. Running EasyOCR.")
+            # Second pass: OCR on pages without native text
+            logger.info("Running Tesseract OCR on scanned/low-text pages...")
+            text_parts = []
 
-            reader = OCRService._get_reader()
-            ocr_text = []
-
-            for page in doc:
-                pix = page.get_pixmap(dpi=300)
-
-                image = Image.frombytes(
-                    "RGB",
-                    (pix.width, pix.height),
-                    pix.samples,
-                )
-
-                results = reader.readtext(np.array(image), detail=0)
-                ocr_text.extend(results)
+            for page_num, page in enumerate(doc):
+                try:
+                    # Render page to image at reasonable DPI (150 for speed, 200 for quality)
+                    pix = page.get_pixmap(dpi=150, clip=page.rect)
+                    
+                    # Convert to PIL Image
+                    img_data = pix.tobytes("ppm")
+                    image = Image.open(io.BytesIO(img_data))
+                    
+                    # Run Tesseract OCR
+                    page_text = pytesseract.image_to_string(image)
+                    if page_text.strip():
+                        text_parts.append(page_text)
+                        logger.debug(f"OCR extracted {len(page_text)} chars from page {page_num + 1}")
+                    
+                except Exception as e:
+                    logger.warning(f"OCR failed on page {page_num}: {e}")
+                    continue
 
             doc.close()
-            return "\n".join(ocr_text).strip()
+            
+            if not text_parts:
+                logger.warning("No text extracted from PDF")
+                return None
+            
+            return "\n".join(text_parts).strip()
 
         except Exception as e:
-            logger.error(f"PDF OCR error: {e}")
+            logger.error(f"PDF extraction error: {e}", exc_info=True)
             return None
 
     @staticmethod
     def _extract_text_from_image(image_path: str) -> Optional[str]:
-        """Extract text from JPG/PNG using EasyOCR."""
+        """Extract text from JPG/PNG using Tesseract."""
         try:
-            image = Image.open(image_path).convert("RGB")
-
-            reader = OCRService._get_reader()
-            results = reader.readtext(np.array(image), detail=0)
-
-            if not results:
+            image = Image.open(image_path)
+            
+            # Convert RGBA to RGB if needed
+            if image.mode in ("RGBA", "LA", "P"):
+                rgb_image = Image.new("RGB", image.size, (255, 255, 255))
+                rgb_image.paste(image, mask=image.split()[-1] if image.mode == "RGBA" else None)
+                image = rgb_image
+            
+            # Tesseract config for better accuracy
+            custom_config = r'--oem 3 --psm 6'
+            text = pytesseract.image_to_string(image, config=custom_config)
+            
+            if not text.strip():
+                logger.warning(f"No text extracted from image: {image_path}")
                 return None
-
-            return "\n".join(results).strip()
+            
+            logger.info(f"Extracted {len(text)} chars from image")
+            return text.strip()
 
         except Exception as e:
             logger.error(f"Image OCR error: {e}")
