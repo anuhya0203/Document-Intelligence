@@ -85,10 +85,6 @@ project-root/
 ├── frontend/
 │   ├── index.html                # Main web interface
 │
-├── docs/
-│   ├── architecture.md                   # Detailed architecture
-│   └── api_examples.md                   # API usage examples
-│
 ├── sample_outputs/
 │   ├── invoice_sample.json               # Sample JSON responses
 │   ├── balance_sheet_sample.json
