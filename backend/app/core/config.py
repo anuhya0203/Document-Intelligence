@@ -16,7 +16,9 @@ class Settings:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
-    # Validation
+    # OCR.SPACE
+    OCR_SPACE_API_KEY: str
+
     MAX_PAGES = int(os.getenv("MAX_PAGES", "3"))
     MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
 
