@@ -7,7 +7,7 @@ class ProcessedDocument(Base):
     __tablename__ = "processed_documents"
     
     id = Column(String(255), primary_key=True, index=True)
-    file_name = Column(String(255), unique=True, index=True)
+    file_name = Column(String(255), index=True)
     document_type = Column(String(50))  # invoice, balance_sheet, profit_and_loss, cash_flow_statement
     
     # Processing metadata
