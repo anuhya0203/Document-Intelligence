@@ -71,7 +71,7 @@ project-root/
 │   │   ├── services/
 │   │   │   ├── document_validation_service.py  # File validation
 │   │   │   ├── ocr_service.py                  # Text extraction
-│   │   │   ├── extraction_service.py           # Claude extraction
+│   │   │   ├── extraction_service.py           # Gemini extraction
 │   │   │   ├── financial_validation_service.py # Calc validation
 │   │   │   └── __init__.py
 │   │   ├── repositories/
@@ -84,11 +84,6 @@ project-root/
 │
 ├── frontend/
 │   ├── index.html                # Main web interface
-│
-├── tests/
-│   ├── test_validation.py                # File validation tests
-│   ├── test_extraction.py                # Extraction logic tests
-│   └── test_api.py                       # API endpoint tests
 │
 ├── docs/
 │   ├── architecture.md                   # Detailed architecture
@@ -210,7 +205,7 @@ GET /api/v1/health
 | **API Framework** | FastAPI | Modern, fast, auto-documentation |
 | **ORM** | SQLAlchemy | Database-agnostic, production-ready |
 | **Database** | SQLite | Scalable, JSONB support for nested data |
-| **AI Extraction** | Anthropic Claude | Superior accuracy for financial data |
+| **AI Extraction** | Gemini API | Superior accuracy for financial data |
 | **OCR** | OCR.Space + PyPDF2 | Free tier, native PDF support |
 | **Frontend** | HTML5 + Vanilla JS | Lightweight, no build step required |
 | **Server** | Uvicorn | ASGI, production-ready |
@@ -231,7 +226,7 @@ GET /api/v1/health
 
 Document validation (file type, size, page count, corruption check)
 OCR + native PDF text extraction
-Claude API integration for field extraction
+Gemini API integration for field extraction
 Financial calculation validation with configurable tolerance
 Structured JSON output with evidence/page numbers
 Database persistence (SQLite/SQLite)
@@ -251,18 +246,18 @@ Production-ready code structure
 
 ## Performance
 
-- Document processing: 2-5 seconds per page (depends on Claude API latency)
+- Document processing: 2-5 seconds per page (depends on Gemini API latency)
 - Database queries: <100ms (indexed on file_name)
 - Frontend load: <1s (lightweight HTML/JS)
 - API throughput: 100+ concurrent requests (Uvicorn + Gunicorn scaling)
 
 ## Known Limitations
 
-1. **Max 3 pages per document** - Configurable in settings
-2. **PDF text extraction** - Relies on native PDF text (OCR for scanned docs via API)
-3. **Financial line items** - Assumes standard accounting formats
-4. **Tolerance** - 1% numerical tolerance for validations (configurable)
-5. **Concurrent uploads** - Limited by Claude API rate limits
+A significant limitation of the deployed application is OCR support for scanned PDF documents on the Render Free Tier. The original implementation used Tesseract OCR for extracting text from scanned PDFs and images. However, Render's free web service provides only 512 MB of available storage, which was insufficient for installing and running the Tesseract binary along with its language data and other project dependencies.
+
+As a result, OCR for scanned PDFs could not be enabled in the deployed environment. Digital PDFs with embedded text can still be processed using PyMuPDF's native text extraction, but scanned PDFs require an external OCR service or a platform with greater system-level support.
+
+Due to the project timeline, migrating the deployment to platforms such as Railway or Koyeb, which offer more flexibility for installing system packages, was explored conceptually but not completed. Consequently, the deployed version prioritizes a lightweight architecture that works within Render's free-tier resource constraints, while full scanned-PDF OCR remains a known limitation and a planned future enhancement.
 
 ## Production Improvements
 
@@ -280,5 +275,5 @@ Production-ready code structure
 ## AI/Tools Used
 
 This project was built with assistance from:
-- **Claude (Anthropic)**: Architecture design, prompt engineering
+- **Gemini (Gemini)**: Architecture design, prompt engineering
 - **ChatGPT (OpenAI)**: Code generation, testing, documentation review
