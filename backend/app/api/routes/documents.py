@@ -1,6 +1,8 @@
 import logging
 import tempfile
 import time
+import shutil
+import os
 from pathlib import Path
 from typing import List
 from fastapi import APIRouter, File, UploadFile, Form, Depends, HTTPException, Query
@@ -14,6 +16,7 @@ from app.services.extraction_service import ExtractionService
 from app.services.financial_validation_service import FinancialValidationService
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.document_type import DocumentType
+from app.services.document_classifier_service import DocumentClassifierService
 
 router = APIRouter(prefix="/api/v1", tags=["documents"])
 
@@ -25,35 +28,72 @@ async def process_document(
     document_type: DocumentType = Form(...),
     db: Session = Depends(get_db)
 ):
-    """
-    Upload and process a document for extraction and validation.
-    
-    Args:
-        file: PDF, JPG, or PNG file
-        document_type: invoice | balance_sheet | profit_and_loss | cash_flow_statement
-    """
     start_time = time.time()
-    
+
+    SUPPORTED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
+
+    SUPPORTED_MIME_TYPES = {
+        "application/pdf",
+        "image/pdf",
+        "image/jpeg",
+        "image/png",
+    }
+
+    tmp_path = None
+
     try:
-        # Save uploaded file to temp location
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
+        file_ext = Path(file.filename).suffix.lower().lstrip(".")
+
+        # -----------------------------------
+        # STEP 0: FILE TYPE VALIDATION
+        # -----------------------------------
+        if file_ext not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "UNSUPPORTED_FILE_TYPE",
+                        "message": "Only PDF / JPG / PNG documents are supported."
+                    }
+                }
+            )
+
+        if file.content_type not in SUPPORTED_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "UNSUPPORTED_FILE_TYPE",
+                        "message": "Only PDF / JPG / PNG documents are supported."
+                    }
+                }
+            )
+
+        # -----------------------------------
+        # SAVE TEMP FILE
+        # -----------------------------------
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=Path(file.filename).suffix
+        ) as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
-        
-        file_ext = Path(file.filename).suffix.lower().lstrip('.')
-        
-        # Step 1: File Validation
-        file_validation_dict, is_valid = DocumentValidationService.validate_file(
-            tmp_path, file.filename
+
+        # -----------------------------------
+        # STEP 1: FILE VALIDATION
+        # -----------------------------------
+        file_validation_dict, is_valid = (
+            DocumentValidationService.validate_file(
+                tmp_path,
+                file.filename
+            )
         )
-        
+
         if not is_valid:
-            logger.warning(f"File validation failed: {file.filename}")
-            processing_metadata = {"error": file_validation_dict.get("error")}
-            result = {
-                "document_name": file.filename,   # API response
-                "file_name": file.filename,       # Database field
+            return {
+                "document_name": file.filename,
+                "file_name": file.filename,
                 "document_type": document_type.value,
                 "processing_status": "FAILED",
                 "file_validation": file_validation_dict,
@@ -64,77 +104,139 @@ async def process_document(
                     "issues": [file_validation_dict.get("error")]
                 },
                 "overall_confidence": 0.0,
-                "processing_metadata": processing_metadata
+                "processing_metadata": {
+                    "error": file_validation_dict.get("error")
+                }
             }
-            
-            # Store result in DB
-            DocumentRepository.create(db, result)
-            return result
-        
-        # Step 2: OCR / Text Extraction
-        #extracted_text = OCRService.extract_text(tmp_path, file_ext)
-        #if not extracted_text:
-         #   logger.warning(f"OCR extraction failed: {file.filename}")
-          #  raise HTTPException(
-          #      status_code=422,
-          #      detail="Could not extract text from document"
-          #  )
-        logger.info("Skipping OCR for debug")
-        extracted_text = "TEST INVOICE NUMBER 123 TOTAL 100"  
-        
-        # Step 3: AI Extraction using Claude
+
+        # -----------------------------------
+        # STEP 2: OCR
+        # -----------------------------------
+        extracted_text = OCRService.extract_text(
+            tmp_path,
+            file_ext
+        )
+
+        if not extracted_text:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": {
+                        "code": "OCR_FAILED",
+                        "message": "Could not extract text from document"
+                    }
+                }
+            )
+
+        logger.info(
+            f"OCR extracted {len(extracted_text)} characters"
+        )
+
+        # -----------------------------------
+        # STEP 3: DOCUMENT TYPE VALIDATION
+        # -----------------------------------
+        classifier = DocumentClassifierService()
+
+        detected_type = classifier.classify(extracted_text)
+
+        logger.info(
+            f"Detected: {detected_type}, "
+            f"Selected: {document_type.value}"
+        )
+
+        if (
+            detected_type != "unknown"
+            and detected_type != document_type.value
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "DOCUMENT_TYPE_MISMATCH",
+                        "message": (
+                            f"Uploaded document appears to be "
+                            f"'{detected_type}' but "
+                            f"'{document_type.value}' was selected."
+                        )
+                    }
+                }
+            )
+
+        # -----------------------------------
+        # STEP 4: EXTRACTION
+        # -----------------------------------
         extracted_data = extraction_service.extract_fields(
-            extracted_text, 
+            extracted_text,
             document_type.value,
             file_validation_dict.get("page_count", 1)
         )
-        
-        # Step 4: Financial Validation
-        validation_result = FinancialValidationService.validate_document(
-            extracted_data,
-            document_type.value
+
+        # -----------------------------------
+        # STEP 5: FINANCIAL VALIDATION
+        # -----------------------------------
+        validation_result = (
+            FinancialValidationService.validate_document(
+                extracted_data,
+                document_type.value
+            )
         )
-        
-        # Calculate confidence (optional)
-        overall_confidence = 0.85 if validation_result["overall_status"] == "PASS" else 0.60
-        
-        # Prepare final response
+
+        overall_confidence = (
+            0.85
+            if validation_result["overall_status"] == "PASS"
+            else 0.60
+        )
+
         result = {
-            "document_name": file.filename,   # API response
-            "file_name": file.filename,       # Database field
+            "document_name": file.filename,
+            "file_name": file.filename,
             "document_type": document_type.value,
-            "processing_status": "PASS" if extracted_data else "FAILED",
+            "processing_status": (
+                "PASS" if extracted_data else "FAILED"
+            ),
             "file_validation": file_validation_dict,
             "extracted_data": extracted_data,
             "validation": validation_result,
             "overall_confidence": overall_confidence,
             "processing_metadata": {
                 "ocr_used": file_ext in ["jpg", "jpeg", "png"],
-                "processed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "processing_time_ms": int((time.time() - start_time) * 1000)
+                "processed_at": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "processing_time_ms": int(
+                    (time.time() - start_time) * 1000
+                )
             }
         }
-        
-        # Store in database
+
         DocumentRepository.create(db, result)
-        
-        logger.info(f"Document processed successfully: {file.filename}")
+
+        logger.info(
+            f"Document processed successfully: {file.filename}"
+        )
+
         return result
-        
+
     except HTTPException:
         raise
+
     except Exception as e:
-        logger.error(f"Document processing error: {str(e)}", exc_info=True)
+        logger.error(
+            f"Document processing error: {str(e)}",
+            exc_info=True
+        )
+
         raise HTTPException(
             status_code=500,
             detail=f"Internal processing error: {str(e)}"
         )
+
     finally:
-        # Cleanup
-        try:
-            Path(tmp_path).unlink()
-        except:
-            pass
+        if tmp_path and Path(tmp_path).exists():
+            try:
+                Path(tmp_path).unlink()
+            except Exception:
+                pass
 
 @router.get("/documents/{document_name}", response_model=ProcessedDocumentResponse)
 async def get_document(

@@ -372,26 +372,22 @@
 
             try {
                 const response = await fetch(`${API_BASE}/documents/process`, {
-                    method: 'POST',
-                    body: formData
-                });
+                method: "POST",
+                body: formData
+            });
 
-                document.getElementById('progressFill').style.width = '100%';
+            const result = await response.json();
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Processing failed');
-                }
+            if (!response.ok) {
+                showAlert(
+                    result.detail?.error?.message || "Processing failed.",
+                    "error"
+                );
+                return;
+            }
 
-                const result = await response.json();
-                fileInput.value = '';
-                fileName.style.display = 'none';
-                document.getElementById('docType').value = '';
-                document.getElementById('progressContainer').style.display = 'none';
-                document.getElementById('submitBtn').disabled = false;
-
-                showAlert('Document processed successfully! ✅', 'success');
-                loadDocuments();
+            showAlert("Document processed successfully!", "success");
+            await loadDocuments();
             } catch (error) {
                 showAlert('Error: ' + error.message, 'error');
                 document.getElementById('progressContainer').style.display = 'none';
