@@ -1,43 +1,27 @@
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from pydantic_settings import BaseSettings
 
 
-class Settings:
-    # Database
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL",
-        "sqlite:///./document_intelligence.db"
-    )
-    SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "False").lower() == "true"
-
+class Settings(BaseSettings):
     # Gemini
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    GEMINI_API_KEY: str
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
 
-    # OCR.SPACE
+    # OCR.space
     OCR_SPACE_API_KEY: str
 
-    MAX_PAGES = int(os.getenv("MAX_PAGES", "3"))
-    MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
+    # Database
+    DATABASE_URL: str = "sqlite:///./document_intelligence.db"
+    SQLALCHEMY_ECHO: bool = False
 
-    ALLOWED_FILE_TYPES = ["pdf", "jpg", "jpeg", "png"]
-    ALLOWED_MIME_TYPES = [
-        "application/pdf",
-        "image/jpeg",
-        "image/jpg",
-        "image/png",
-    ]
+    # App
+    APP_NAME: str = "Document Intelligence API"
+    APP_VERSION: str = "1.0.0"
+    ENVIRONMENT: str = "production"
+    LOG_LEVEL: str = "INFO"
 
-    # Financial validation
-    NUMERIC_TOLERANCE = float(os.getenv("NUMERIC_TOLERANCE", "0.01"))
-
-    # OCR
-    OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "en")
-
-    # Logging
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
 
 settings = Settings()
